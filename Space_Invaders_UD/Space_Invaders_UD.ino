@@ -121,8 +121,7 @@ void Jugador :: dibujar () {
 Alien :: Alien (int posInit, int _h, int _tam) : Nave (posInit, _h, _tam) {}
 
 void Alien :: dibujar () {
-  lcd.drawRect(posX, posy);
-  lcd.drawRect(posX + 2, posy + 2);
+  lcd.drawRect(posX, posY, posX + 2, posY + 2);
 }
 
 //Del Laser-------------------------------------------
@@ -193,7 +192,7 @@ void loop() {
   }
   //Dibujar
   lcd.clrScr();
-  for (int i = 0; i < Obj.Count(); i++) {
+  for (int i = 0; i < aliens.Count(); i++) {
     aliens[i]->dibujar();
   }
   j.dibujar();

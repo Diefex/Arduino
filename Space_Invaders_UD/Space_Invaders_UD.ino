@@ -21,10 +21,11 @@ extern uint8_t SmallFont[];
 const int LCDX = 84; //Tamaño horizontal del lcd
 const int LCDY = 48; //Tamaño vertical del lcd
 const int TAMJ = 7; //Tamaño del jugador
+const int NUMALIENS = 4; //Numero maximo de aliens vivos al mismo tiempo
 //Configuracion de Botones --------------------------------
 //Pines
-const int pinBtn1 = 3;
-const int pinBtn2 = 4;
+const int pinBtnD = 3;
+const int pinBtnI = 4;
 //Variables
 int btn1 = HIGH;
 int btn2 = HIGH;
@@ -39,15 +40,18 @@ void gameInit();
 //Clases---------------------------------------------------
 class Objeto {
   protected:
-    int posX; //Posicion
+    float posX; //Posicion
     int posY; //Altura
   public :
     Objeto();
     Objeto(int, int);
     virtual void dibujar();
+    int getPosX();
+    int getPosY();
 };
 
 class Nave : public Objeto {
+  protected:
     int tam; //Tamaño
   public:
     Nave(int, int, int);
@@ -62,38 +66,39 @@ class Jugador : public Nave {
 };
 
 class Alien : public Nave {
+    float dir = 1;
   public:
     Alien(int, int, int);
     virtual void dibujar ();
+    void moverA();
+    void turn();
+};
+
+class AlienFactory {
+    boolean aliensVivos[NUMALIENS];
+  public:
+    Alien* genAlien();
+    void killAlien(int);
 };
 
 class Laser : public Objeto {
   public:
     Laser (int, int);
     virtual void dibujar();
-};
-
-class VistaJuego {
-  public:
-    //impresion del buffer en la pantalla
-    void imprimir(List<Objeto*>);
+    void mover();
 };
 //Metodos ---------------------------------------------------
-//De Vista----------------------------------------
-void VistaJuego :: imprimir(List<Objeto*> Obj) {
-  //limpia pantalla
-  lcd.clrScr();
-  //dibuja el jugador
-  for (int i = 0; i < Obj.Count(); i++) {
-    Obj[i]->dibujar();
-  }
-  //Muestra en panatalla
-  lcd.update();
-}
 //De Objeto---------------------------------------
 Objeto :: Objeto (int posInit, int _h) {
   posX = posInit;
   posY = _h;
+}
+
+int Objeto :: getPosX() {
+  return posX;
+}
+int Objeto :: getPosY() {
+  return posY;
 }
 //De Nave-----------------------------------------
 Nave :: Nave (int posInit, int _h, int _tam) : Objeto(posInit, _h) {
@@ -121,14 +126,55 @@ void Jugador :: dibujar () {
 Alien :: Alien (int posInit, int _h, int _tam) : Nave (posInit, _h, _tam) {}
 
 void Alien :: dibujar () {
-  lcd.drawRect(posX, posY, posX + 2, posY + 2);
+  lcd.drawRect(posX + 1, posY + 1, posX + 5, posY + 3);
+  lcd.drawRect(posX, posY + 3, posX, posY + 4);
+  lcd.drawRect(posX + 6, posY + 3, posX + 6, posY + 4);
+  lcd.setPixel(posX + 3, posY + 2);
+  lcd.setPixel(posX + 2, posY);
+  lcd.setPixel(posX + 4, posY);
 }
 
-//Del Laser-------------------------------------------
+void Alien :: moverA () {
+  if (posX <= 0 || posX >= LCDX - tam) {
+    turn();
+  }
+  posX += dir / 4;
+}
+
+void Alien :: turn() {
+  dir *= -1;
+}
+//De Laser-------------------------------------------
 Laser :: Laser (int x, int y) : Objeto(x, y) {}
 
 void Laser :: dibujar () {
-  lcd.drawLine(posX, posY, posY, posY + 3);
+  lcd.drawRect(posX, posY, posX + 1, posY + 3);
+}
+
+void Laser :: mover () {
+  if (posY >= 0) {
+    posY--;
+  }
+}
+
+//De AlienFactory-------------------------------------
+Alien* AlienFactory :: genAlien () {
+  int y = 0;
+  int x = 10;
+  for (int i = 0; i < NUMALIENS; i++) {
+    x = 5 + (i * 10);
+    y = 5 + (i * 5);
+    if (aliensVivos[i] == false) {
+      Alien* a = new Alien(x, y, 5);
+      aliensVivos[i] = true;
+      return a;
+    }
+  }
+  return new Alien(-1, -1, 0);
+}
+
+void AlienFactory :: killAlien(int i) {
+  aliensVivos[i] = false;
 }
 
 //Inicializacion del LCD------------------------------
@@ -149,7 +195,7 @@ void gameInit() {
 //input de botones------------------------------------
 boolean BtnDerPress() {
   //lectura de pines
-  int btn = digitalRead(pinBtn1);
+  int btn = digitalRead(pinBtnD);
   //boton1 mueve hacia la derecha
   if (btn == LOW) {
     return true;
@@ -160,8 +206,8 @@ boolean BtnDerPress() {
 
 boolean BtnIzqPress() {
   //lectura de pines
-  int btn = digitalRead(pinBtn2);
-  //boton1 mueve hacia la izquierda
+  int btn = digitalRead(pinBtnI);
+  //boton2 mueve hacia la izquierda
   if (btn == LOW) {
     return true;
   } else {
@@ -170,16 +216,21 @@ boolean BtnIzqPress() {
 }
 
 //Setup Y Loop --------------------------------------------
-VistaJuego vista;
 List<Alien*> aliens; //Lista de aliens en pantalla
+List<Laser*> lasers; //Lasers en pantalla
+AlienFactory af;
 Jugador j(LCDX / 2, LCDY - TAMJ, TAMJ); //Jugador
+int t = 0;
 void setup() {
-  pinMode(pinBtn1, INPUT);
-  pinMode(pinBtn2, INPUT);
+  pinMode(pinBtnD, INPUT);
+  pinMode(pinBtnI, INPUT);
   lcdInit();
 
-  aliens.Add(new Alien(10, 10, 7));
-  aliens.Add(new Alien(20, 20, 7));
+  //aliens.Add(new Alien(10, 10, 7));
+  //aliens.Add(new Alien(20, 20, 7));
+  for (int i = 0; i < NUMALIENS; i++) {
+    aliens.Add(af.genAlien());
+  }
 }
 
 void loop() {
@@ -189,12 +240,56 @@ void loop() {
   }
   if (BtnIzqPress()) {
     j.mover(-1);
+
+  }
+  //Disparar laser
+  if (t >= 70) {
+    lasers.Add(new Laser(j.getPosX() + 3, j.getPosY()));
+    Alien* a = af.genAlien();
+    if (a->getPosX() >= 0) {
+      aliens.Add(a);
+    }
+    t -= 70;
+  }
+  //Mover Aliens
+  for (int i = 0; i < aliens.Count(); i++) {
+    aliens[i]->moverA();
+    if (aliens[i]->getPosX() < 0 || aliens[i]->getPosY() < 0) {
+      eliminarAlien(i);
+    }
+  }
+  //Mover Lasers
+  for (int i = 0; i < lasers.Count(); i++) {
+    if (lasers[i]->getPosY() < 0) {
+      eliminarLaser(i);
+    } else {
+      lasers[i]->mover();
+      for (int j = 0; j < aliens.Count(); j++) {
+        if ((aliens[j]->getPosX() <= lasers[i]->getPosX() && aliens[j]->getPosX() + 5 >= lasers[i]->getPosX()) && (aliens[j]->getPosY() <= lasers[i]->getPosY() && aliens[j]->getPosY() + 5 >= lasers[i]->getPosY())) {
+          eliminarAlien(j);
+        }
+      }
+    }
   }
   //Dibujar
   lcd.clrScr();
   for (int i = 0; i < aliens.Count(); i++) {
     aliens[i]->dibujar();
+
+  }
+  for (int i = 0; i < lasers.Count(); i++) {
+    lasers[i]->dibujar();
   }
   j.dibujar();
   lcd.update();
+  t++;
+}
+
+void eliminarLaser(int i) {
+  lasers.Remove(i);
+}
+
+void eliminarAlien(int i) {
+  aliens.Remove(i);
+  af.killAlien(i);
 }

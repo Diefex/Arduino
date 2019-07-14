@@ -1,25 +1,17 @@
 //Librerias ------------------------------------------------
 //LCD
-#include <LCD5110_Graph.h>
-//ESP
-#include <SoftwareSerial.h>
-//Configuracion ESP ----------------------------------------
-//Pines
-// Los Pines deben estar conectados de la siguente manera:
-//      TDX  - Pin 6
-//      RDX  - Pin 7
-SoftwareSerial ESP(7, 6);
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_PCD8544.h>
 //Configuracion LCD ----------------------------------------
 //Pines
 // Los Pines deben estar conectados de la siguente manera:
-//      CLK  - Pin 8
-//      DIN  - Pin 9
-//      DC   - Pin 10
-//      CE   - Pin 11
-//      RST  - Pin 12
-LCD5110 myGLCD(8, 9, 10, 12, 11);
-//fuente para el LCD
-extern uint8_t SmallFont[];
+//      CLK  - Pin D1
+//      DIN  - Pin D2
+//      DC   - Pin D5
+//      CE   - Pin D6
+//      RST  - Pin D7
+Adafruit_PCD8544 display = Adafruit_PCD8544(D1, D2, D5, D6, D7);
 //---------------------------------------------------------
 //Configuracion de Jugadores ------------------------------
 //posiciones
@@ -42,36 +34,27 @@ const float VelPel = 0.5;
 //Direccion
 float DirPel;
 //tamaño
-const int tamPel = 2;
+const int tamPel = 3;
 //---------------------------------------------------------
 //Configuracion de Botones --------------------------------
 //Pines
-const int pinBtn1 = 3;
-const int pinBtn2 = 4;
+const int pinBtnI = D8;
+const int pinBtnD = 10;
 //Variables
-int btn1 = HIGH;
-int btn2 = HIGH;
+int btnI = LOW;
+int btnD = LOW;
 //---------------------------------------------------------
 //Setup pelY Loop -------------------------------------------
 void setup() {
+  pinMode(pinBtnI, INPUT);
+  pinMode(pinBtnD, INPUT);
   Serial.begin(9600);
-  ESP.begin(9600);
-  LCDinit();
+  display.begin();
+  display.setContrast(70);
   gameInit();
 }
 
 void loop() {
-  // Repetir lo recibido por el ESP8266 hacia el monitor serial
-  if (ESP.available())
-  { char c = ESP.read() ;
-    Serial.print(c);
-  }
-
-  // Repetir lo recibido por el monitor serial hacia el ESP8266
-  if (Serial.available())
-  { char c = Serial.read();
-    ESP.print(c);
-  }
   leerBtns();
   movPelota();
   movOponente();
@@ -79,13 +62,6 @@ void loop() {
 }
 //---------------------------------------------------------
 //Funciones -----------------------------------------------
-
-//inicializacion del LCD
-void LCDinit() {
-  myGLCD.InitLCD();
-  myGLCD.setFont(SmallFont);
-  randomSeed(analogRead(7));
-}
 
 //inicializacion del juego
 void gameInit() {
@@ -104,14 +80,14 @@ void gameInit() {
 //input de botones
 void leerBtns() {
   //lectura de pines
-  btn1 = digitalRead(pinBtn1);
-  btn2 = digitalRead(pinBtn2);
+  btnI = digitalRead(pinBtnI);
+  btnD = digitalRead(pinBtnD);
   //boton1 mueve hacia arriba
-  if (btn1 == LOW && posJ1 > limSup + 1) {
+  if (btnI == HIGH && posJ1 > limSup + 1) {
     posJ1--;
   }
   //boton2 mueve hacia abajo
-  if (btn2 == LOW && posJ1 < limInf - tamJ - 1) {
+  if (btnD == HIGH && posJ1 < limInf - tamJ - 1) {
     posJ1++;
   }
 }
@@ -125,8 +101,9 @@ void movPelota() {
   if (pelX > 83 - tamPel) {
     puntJ1++;
     if (puntJ1 >= 5) {
-      myGLCD.print("Jugador 1 Gana", CENTER, (limInf - limSup) / 2);
-      myGLCD.update();
+      display.setCursor(5, (limInf - limSup) / 2);
+      display.println("Jugador 1 Gana");
+      display.display();
       delay(3000);
       setup();
     }
@@ -138,8 +115,9 @@ void movPelota() {
   if (pelX < 0) {
     puntJ2++;
     if (puntJ2 >= 5) {
-      myGLCD.print("Jugador 2 Gana", CENTER, (limInf - limSup) / 2);
-      myGLCD.update();
+      display.setCursor(5, (limInf - limSup) / 2);
+      display.println("Jugador 2 Gana");
+      display.display();
       delay(3000);
       setup();
     }
@@ -153,9 +131,9 @@ void movPelota() {
   }
   //Colision con jugador 1
   if (pelX <= 4 && pelY >= posJ1 - tamPel && pelY <= posJ1 + tamJ) {
-    if (btn1 == LOW) {
+    if (btnI == LOW) {
       DirPel = 7 * PI / 4;
-    } else if (btn2 == LOW) {
+    } else if (btnD == LOW) {
       DirPel = PI / 4;
     } else {
       DirPel += PI / 2;
@@ -189,20 +167,22 @@ void movOponente() {
 //dibujado en el LCD
 void dibujar() {
   //limpia pantalla
-  myGLCD.clrScr();
+  display.clearDisplay();
   //dibuja el campo
-  myGLCD.drawLine(42, 0, 42, 47);
-  myGLCD.drawLine(0, limSup, 83, limSup);
-  myGLCD.drawLine(0, limInf, 83, limInf);
-  //dibuja los puntJs
-  myGLCD.printNumI(puntJ2, 48, 0);
-  myGLCD.printNumI(puntJ1, 30, 0);
+  display.drawLine(42, 0, 42, 47,BLACK);
+  display.drawLine(0, limSup, 83, limSup, BLACK);
+  display.drawLine(0, limInf, 83, limInf, BLACK);
+  //dibuja los puntajes
+  display.setCursor(46,0);
+  display.println(puntJ2);
+  display.setCursor(34,0);
+  display.println(puntJ1);
   //dibuja los jugadores
-  myGLCD.drawRect(2, posJ1, 3, (posJ1 + tamJ));
-  myGLCD.drawRect(81, posJ2, 80, (posJ2 + tamJ));
+  display.drawRect(2, posJ1, 2, tamJ, BLACK);
+  display.drawRect(81, posJ2, 2, tamJ, BLACK);
   //dibuja la Pelota
-  myGLCD.drawRect(pelX, pelY, pelX + tamPel, pelY + tamPel);
+  display.drawRect(pelX, pelY, tamPel, tamPel, BLACK);
   //Muestra en panatalla
-  myGLCD.update();
+  display.display();
 }
 //---------------------------------------------------------

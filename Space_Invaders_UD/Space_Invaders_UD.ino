@@ -1,34 +1,34 @@
 //Librerias ------------------------------------------------
-#include <LCD5110_Graph.h>
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_PCD8544.h>
 #include <ListLib.h>
 
 using namespace std;
 
 //Configuracion lcd ----------------------------------------
-//Pines
-LCD5110 lcd(8, 9, 10, 12, 11);
 // Los Pines deben estar conectados de la siguente manera:
-//      CLK  - Pin 8
-//      DIN  - Pin 9
-//      DC   - Pin 10
-//      CE   - Pin 11
-//      RST  - Pin 12
-
-//fuente
-extern uint8_t SmallFont[];
+//      CLK  - Pin D1
+//      DIN  - Pin D2
+//      DC   - Pin D5
+//      CE   - Pin D6
+//      RST  - Pin D7
+Adafruit_PCD8544 display = Adafruit_PCD8544(D1, D2, D5, D6, D7);
 
 //Constantes-----------------------------------------------
 const int LCDX = 84; //Tamaño horizontal del lcd
 const int LCDY = 48; //Tamaño vertical del lcd
 const int TAMJ = 7; //Tamaño del jugador
 const int NUMALIENS = 4; //Numero maximo de aliens vivos al mismo tiempo
+
 //Configuracion de Botones --------------------------------
-//Pines
-const int pinBtnD = 3;
-const int pinBtnI = 4;
-//Variables
-int btn1 = HIGH;
-int btn2 = HIGH;
+// Los Botones deben estar conectados de la siguente manera:
+//      BtnDerecho  - Pin 10 (SD3)
+//      BtnIzquierdo  - Pin D8
+const int pinBtnD = 10;
+const int pinBtnI = D8;
+int btnD = HIGH;
+int btnI = HIGH;
 
 //Configuracion del Juego----------------------------------
 
@@ -67,17 +67,19 @@ class Jugador : public Nave {
 
 class Alien : public Nave {
     float dir = 1;
+    boolean vivo = true;
   public:
     Alien(int, int, int);
     virtual void dibujar ();
     void moverA();
     void turn();
+    boolean isVivo();
 };
 
 class AlienFactory {
     boolean aliensVivos[NUMALIENS];
   public:
-    Alien* genAlien();
+    void genAlien();
     void killAlien(int);
 };
 
@@ -87,6 +89,13 @@ class Laser : public Objeto {
     virtual void dibujar();
     void mover();
 };
+
+//Declaracion de objetos y demas----------------------------
+List<Alien*> aliens; //Lista de aliens en pantalla
+List<Laser*> lasers; //Lasers en pantalla
+AlienFactory af;
+Jugador j(LCDX / 2, LCDY - TAMJ, TAMJ); //Jugador
+
 //Metodos ---------------------------------------------------
 //De Objeto---------------------------------------
 Objeto :: Objeto (int posInit, int _h) {
@@ -113,25 +122,27 @@ void Nave :: mover(int x) {
 Jugador :: Jugador (int posInit, int _h, int _tam) : Nave (posInit, _h, _tam) {}
 
 void Jugador :: dibujar () {
-  lcd.setPixel(posX + 3, posY);
-  lcd.drawRect(posX + 2, posY + 1, posX + 4, posY + 2);
-  lcd.drawRect(posX + 1, posY + 3, posX + 5, posY + 4);
-  lcd.drawRect(posX, posY + 4, posX + 1, posY + 5);
-  lcd.drawRect(posX + 5, posY + 4, posX + 6, posY + 5);
-  lcd.setPixel(posX, posY + 6);
-  lcd.setPixel(posX + 6, posY + 6);
+  int X = posX;
+  display.drawPixel(X + 3, posY, BLACK);
+  display.drawRect(X + 2, posY + 1, 3, 2, BLACK);
+  display.drawRect(X + 1, posY + 3, 5, 2, BLACK);
+  display.drawRect(X, posY + 4, 2, 2, BLACK);
+  display.drawRect(X + 5, posY + 4, 2, 2, BLACK);
+  display.drawPixel(X, posY + 6, BLACK);
+  display.drawPixel(X + 6, posY + 6, BLACK);
 }
 
 //De Alien--------------------------------------------
 Alien :: Alien (int posInit, int _h, int _tam) : Nave (posInit, _h, _tam) {}
 
 void Alien :: dibujar () {
-  lcd.drawRect(posX + 1, posY + 1, posX + 5, posY + 3);
-  lcd.drawRect(posX, posY + 3, posX, posY + 4);
-  lcd.drawRect(posX + 6, posY + 3, posX + 6, posY + 4);
-  lcd.setPixel(posX + 3, posY + 2);
-  lcd.setPixel(posX + 2, posY);
-  lcd.setPixel(posX + 4, posY);
+  int X = posX;
+  display.drawRect(X + 1, posY + 1, 5, 3, BLACK);
+  display.drawRect(X, posY + 3, 1, 2, BLACK);
+  display.drawRect(X + 6, posY + 3, 1, 3, BLACK);
+  display.drawPixel(X + 3, posY + 2, BLACK);
+  display.drawPixel(X + 2, posY, BLACK);
+  display.drawPixel(X + 4, posY, BLACK);
 }
 
 void Alien :: moverA () {
@@ -144,11 +155,15 @@ void Alien :: moverA () {
 void Alien :: turn() {
   dir *= -1;
 }
+
+boolean Alien :: isVivo(){
+  return vivo;
+}
 //De Laser-------------------------------------------
 Laser :: Laser (int x, int y) : Objeto(x, y) {}
 
 void Laser :: dibujar () {
-  lcd.drawRect(posX, posY, posX + 1, posY + 3);
+  display.drawRect(posX, posY, 1, 3, BLACK);
 }
 
 void Laser :: mover () {
@@ -158,19 +173,17 @@ void Laser :: mover () {
 }
 
 //De AlienFactory-------------------------------------
-Alien* AlienFactory :: genAlien () {
+void AlienFactory :: genAlien () {
   int y = 0;
   int x = 10;
-  for (int i = 0; i < NUMALIENS; i++) {
+  for (int i = 0; i < aliens.Count(); i++) {
     x = 5 + (i * 10);
     y = 5 + (i * 5);
-    if (aliensVivos[i] == false) {
+    if (aliens[i]->isVivo()) {
       Alien* a = new Alien(x, y, 5);
-      aliensVivos[i] = true;
-      return a;
+      aliens[i] = a;
     }
   }
-  return new Alien(-1, -1, 0);
 }
 
 void AlienFactory :: killAlien(int i) {
@@ -179,9 +192,8 @@ void AlienFactory :: killAlien(int i) {
 
 //Inicializacion del LCD------------------------------
 void lcdInit() {
-  lcd.InitLCD();
-  lcd.setFont(SmallFont);
-  randomSeed(analogRead(7));
+  display.begin();
+  display.setContrast(70);
 }
 
 //Inicializacion del juego----------------------------
@@ -216,10 +228,7 @@ boolean BtnIzqPress() {
 }
 
 //Setup Y Loop --------------------------------------------
-List<Alien*> aliens; //Lista de aliens en pantalla
-List<Laser*> lasers; //Lasers en pantalla
-AlienFactory af;
-Jugador j(LCDX / 2, LCDY - TAMJ, TAMJ); //Jugador
+
 int t = 0;
 void setup() {
   pinMode(pinBtnD, INPUT);
@@ -229,7 +238,7 @@ void setup() {
   //aliens.Add(new Alien(10, 10, 7));
   //aliens.Add(new Alien(20, 20, 7));
   for (int i = 0; i < NUMALIENS; i++) {
-    aliens.Add(af.genAlien());
+    af.genAlien();
   }
 }
 
@@ -245,10 +254,6 @@ void loop() {
   //Disparar laser
   if (t >= 70) {
     lasers.Add(new Laser(j.getPosX() + 3, j.getPosY()));
-    Alien* a = af.genAlien();
-    if (a->getPosX() >= 0) {
-      aliens.Add(a);
-    }
     t -= 70;
   }
   //Mover Aliens
@@ -272,7 +277,7 @@ void loop() {
     }
   }
   //Dibujar
-  lcd.clrScr();
+  display.clearDisplay();
   for (int i = 0; i < aliens.Count(); i++) {
     aliens[i]->dibujar();
 
@@ -281,7 +286,7 @@ void loop() {
     lasers[i]->dibujar();
   }
   j.dibujar();
-  lcd.update();
+  display.display();
   t++;
 }
 
